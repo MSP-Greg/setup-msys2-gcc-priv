@@ -1,7 +1,6 @@
 name: MSYS2 GCC Package
 
 on:
-  pull_request:
   push:
 #  schedule:
 #    - cron: '30 2,8,15 * * *'

@@ -42,6 +42,7 @@ module CreateMSYS2Tools
 
     def run
       remove_duplicate_files
+      clean_database 'msys'
 
       # create 7z file
       tar_path = "#{Dir.pwd}\\msys2.7z".gsub '/', '\\'
