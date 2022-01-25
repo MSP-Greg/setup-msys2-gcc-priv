@@ -32,6 +32,10 @@ jobs:
         with:
           ruby-version: mingw
 
+      - name: Clean msys2
+        timeout-minutes: 15
+        run: ./clean.ps1
+
       - name: Update msys2
         timeout-minutes: 15
         run: ./update_msys2.ps1
