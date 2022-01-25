@@ -14,6 +14,19 @@ module CreateMSYS2Tools
 
     SEVEN = 'C:\Program Files\7-Zip\7z'
 
+    def remove_non_msys2
+      dirs = %w[clang32 clang64 clangarm64 mingw32 mingw64 ucrt64]
+      Dir.chdir MSYS2_ROOT do |d|
+        dirs.each { |dir_name| FileUtils.rm_rf dir_name }
+      end
+
+      dir = "#{MSYS2_ROOT}/#{LOCAL}"
+      Dir.chdir dir do |d|
+        del_dirs = Dir['mingw*']
+        del_dirs.each { |dir_name| FileUtils.rm_rf dir_name }
+      end
+    end
+
     def remove_duplicate_files
       files = Dir.glob('**/*', base: MSYS2_ROOT).reject { |fn| fn.start_with? LOCAL }
 
@@ -41,6 +54,8 @@ module CreateMSYS2Tools
     end
 
     def run
+      remove_non_msys2
+
       remove_duplicate_files
       clean_database 'msys'
 
