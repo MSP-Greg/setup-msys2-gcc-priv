@@ -10027,7 +10027,7 @@ const run = async () => {
     console.timeEnd('  Upload 7z')
 
     // wait for file processing
-    await new Promise(r => setTimeout(r, 5000))
+    await new Promise(r => setTimeout(r, 10000))
 
     console.time('    Replace')
 

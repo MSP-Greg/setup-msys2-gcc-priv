@@ -3,8 +3,6 @@ name: MSYS2 GCC Package
 on:
   pull_request:
   push:
-  schedule:
-    - cron: '30 0,6,12,18 * * *'
   workflow_dispatch:
 
 
@@ -40,11 +38,13 @@ jobs:
         timeout-minutes: 15
         run: ./update_msys2.ps1
 
-      - name: Create MSYS2 tools 7z
+      - name: ${{ env.Create7z }}
+        if: env.Create7z == 'Create MSYS2 tools 7z'
         timeout-minutes: 10
         run:  ruby create_msys2_pkg.rb
 
       - name: upload asset
+        if: env.Create7z == 'Create MSYS2 tools 7z'
         timeout-minutes: 5
         uses: ./.github/actions/upload-binary
         env:
