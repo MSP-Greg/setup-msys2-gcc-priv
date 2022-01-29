@@ -5,7 +5,6 @@ on:
   push:
   workflow_dispatch:
 
-
 jobs:
   msys2:
     runs-on: windows-2022
@@ -30,22 +29,22 @@ jobs:
         with:
           ruby-version: mingw
 
-      - name: Clean msys2
-        timeout-minutes: 15
-        run: ./clean.ps1
+#      - name: Clean msys2
+#        timeout-minutes: 15
+#        run: ./clean.ps1
 
       - name: Update msys2
         timeout-minutes: 15
         run: ./update_msys2.ps1
 
-      - name: ${{ env.Create7z }}
-        if: env.Create7z == 'Create MSYS2 tools 7z'
+      - name: Create MSYS2 tools 7z
         timeout-minutes: 10
+        if: env.Create7z == 'yes'
         run:  ruby create_msys2_pkg.rb
 
       - name: upload asset
-        if: env.Create7z == 'Create MSYS2 tools 7z'
         timeout-minutes: 5
+        if: env.Create7z == 'yes'
         uses: ./.github/actions/upload-binary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
