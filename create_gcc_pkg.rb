@@ -20,6 +20,12 @@ module CreateMingwGCC
 
     SEVEN = "C:\\Program Files\\7-Zip\\7z"
 
+    DASH  = ENV['GITHUB_ACTIONS'] ? "\u2500".dup.force_encoding('utf-8') : 151.chr
+    LINE  = DASH * 40
+    GRN   = "\e[92m"
+    YEL   = "\e[93m"
+    RST   = "\e[0m"
+
     def install_gcc
       args = '--noconfirm --noprogressbar --needed'
       # zlib required by gcc
@@ -27,19 +33,20 @@ module CreateMingwGCC
       base_ruby = %w[gmp libffi libyaml openssl ragel readline]
       pkgs = (base_gcc + base_ruby).unshift('').join " #{@pkg_pre}"
 
-      cmd1 = true
-      cmd2 = true
-
       Dir.chdir("#{MSYS2_ROOT}/usr/bin") do
-        cmd1 = system "sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+        exit(1) unless system "sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
 
-        STDOUT.syswrite "\n\e[93mUpdating the following #{@pkg_pre[0..-2]} packages:\e[0m\n" \
-          "\e[93m#{(base_gcc + base_ruby).join ' '}\e[0m\n\n"
-        cmd2 = system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Sy #{args} #{pkgs}"
-      end
+        STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
+        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Syuu  --noconfirm'"
+        system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
 
-      unless cmd1 && cmd2
-        exit 1
+        STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
+        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Syuu  --noconfirm'"
+        system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+
+        STDOUT.syswrite "\n#{YEL}#{LINE}Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
+          "#{YEL}#{(base_gcc + base_ruby).join ' '}#{RST}\n\n"
+        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -S #{args} #{pkgs}"
       end
     end
 
@@ -64,13 +71,16 @@ module CreateMingwGCC
       updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
         .lines.select { |l| l.start_with? @pkg_pre }.join
 
+      STDOUT.syswrite "\n#{YEL}#{LINE} Installed #{@pkg_pre[0..-2]} packages#{RST}\n"
+      STDOUT.syswrite "#{updated_pkgs}\n\n"
+
       if current_pkgs == updated_pkgs
         File.write ENV['GITHUB_ENV'], "Create7z=no\n", mode: 'a'
         STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
         exit 0
       else
         File.write ENV['GITHUB_ENV'], "Create7z=yes\n", mode: 'a'
-        STDOUT.syswrite "\n\e[92m** Creating and Uploading #{@pkg_name} gcc tools 7z **\e[0m\n\n"
+        STDOUT.syswrite "\n#{GRN}** Creating and Uploading #{@pkg_name} gcc tools 7z **#{RST}\n\n"
       end
 
       Dir.chdir(TEMP) do

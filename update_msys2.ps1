@@ -1,12 +1,12 @@
 <#
-  Code by MSP-Greg
-  Updates Actions Windows images MSYS2 packages, also adding common build tools.
+  Original code by MSP-Greg
+  Updates Actions Windows runner's MSYS2 packages, also adding common build tools.
   Exits on error, sets ENV['Create7z'] equal to 'yes' if an updated 7z file
   needs to be created and uploaded.
 #>
 
 $dash = "$([char]0x2500)"
-$line = $($dash * 40)
+$line = $($dash * 50)
 $yel  = "`e[93m"
 $grn  = "`e[92m"
 $rst  = "`e[0m"
@@ -23,12 +23,11 @@ $current_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort) -join '`n'
 Run-Check 'pacman -Syyuu --noconfirm'
 taskkill /f /fi "MODULES eq msys-2.0.dll"
 
-Write-Host 'pacman --noconfirm -Syuu (2nd pass)'
 Run-Check 'pacman --noconfirm -Syuu (2nd pass)' 'pacman -Syuu  --noconfirm'
 taskkill /f /fi "MODULES eq msys-2.0.dll"
 
 $pkgs = 'autoconf-wrapper autogen automake-wrapper bison diffutils libtool m4 make patch texinfo texinfo-tex compression'
-Run-Check "Install MSYS2 packages`n$pkgs" "pacman -S --noconfirm --needed --noprogressbar $pkgs"
+Run-Check "Install MSYS2 packages$rst`n$yel$pkgs" "pacman -S --noconfirm --needed --noprogressbar $pkgs"
 
 Run-Check 'Clean packages' 'pacman -Scc --noconfirm'
 
