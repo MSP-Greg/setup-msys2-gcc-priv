@@ -2,7 +2,11 @@ name: MSYS2 GCC Package
 
 on:
   pull_request:
+    branches:
+      - '*'
   push:
+    branches:
+      - '*'
   workflow_dispatch:
 
 jobs:
@@ -36,6 +40,9 @@ jobs:
       - name: Update msys2
         timeout-minutes: 15
         run: ./update_msys2.ps1
+
+      - name: show ENV
+        run:  gci env:* | sort-object name | Out-String -Stream -Width 120
 
       - name: Create MSYS2 tools 7z
         timeout-minutes: 10
@@ -75,8 +82,12 @@ jobs:
         timeout-minutes: 10
         run:  ruby create_gcc_pkg.rb ${{ matrix.gcc }}
 
+      - name: show ENV
+        run:  gci env:* | sort-object name | Out-String -Stream -Width 120
+
       - name: upload asset
         timeout-minutes: 5
+        if: env.Create7z == 'yes'
         uses: ./.github/actions/upload-binary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

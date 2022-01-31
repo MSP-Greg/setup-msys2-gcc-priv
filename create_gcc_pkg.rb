@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Original code by MSP-Greg
+# This script creates 7z files of the mingw64 and ucrt64 MSYS2 gcc tool chains
+# for use with GitHub Actions.  Since these files are installed on the Actions
+# Windows runner's hard drive, smaller zip files speed up the installation.
+# Hence, many of the 'doc' related files in the 'share' folder are removed.
+
 require 'fileutils'
 
 module CreateMingwGCC
@@ -9,7 +15,7 @@ module CreateMingwGCC
     TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
     TAR_DIR = "#{TEMP}/msys64"
 
-    SYNC = 'var/lib/pacman/sync'
+    SYNC  = 'var/lib/pacman/sync'
     LOCAL = 'var/lib/pacman/local'
 
     SEVEN = "C:\\Program Files\\7-Zip\\7z"
@@ -20,13 +26,20 @@ module CreateMingwGCC
       base_gcc  = %w[dlfcn make pkgconf libmangle-git tools-git gcc]
       base_ruby = %w[gmp libffi libyaml openssl ragel readline]
       pkgs = (base_gcc + base_ruby).unshift('').join " #{@pkg_pre}"
+
+      cmd1 = true
+      cmd2 = true
+
       Dir.chdir("#{MSYS2_ROOT}/usr/bin") do
-        cmd = "sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
-        system cmd
-        cmd = "#{MSYS2_ROOT}/usr/bin/pacman.exe -Sy #{args} pacman-mirrors"
-        system cmd
-        cmd = "#{MSYS2_ROOT}/usr/bin/pacman.exe -S #{args} #{pkgs}"
-        system cmd
+        cmd1 = system "sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+
+        STDOUT.syswrite "\n\e[93mUpdating the following #{@pkg_pre[0..-2]} packages:\e[0m\n" \
+          "\e[93m#{(base_gcc + base_ruby).join ' '}\e[0m\n\n"
+        cmd2 = system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Sy #{args} #{pkgs}"
+      end
+
+      unless cmd1 && cmd2
+        exit 1
       end
     end
 
@@ -43,7 +56,22 @@ module CreateMingwGCC
         exit 1
       end
 
+      current_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
+        .lines.select { |l| l.start_with? @pkg_pre }.join
+
       install_gcc
+
+      updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
+        .lines.select { |l| l.start_with? @pkg_pre }.join
+
+      if current_pkgs == updated_pkgs
+        File.write ENV['GITHUB_ENV'], "Create7z=no\n", mode: 'a'
+        STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
+        exit 0
+      else
+        File.write ENV['GITHUB_ENV'], "Create7z=yes\n", mode: 'a'
+        STDOUT.syswrite "\n\e[92m** Creating and Uploading #{@pkg_name} gcc tools 7z **\e[0m\n\n"
+      end
 
       Dir.chdir(TEMP) do
         FileUtils.mkdir_p "msys64/#{SYNC}"

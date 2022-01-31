@@ -35,9 +35,9 @@ Run-Check 'Clean packages' 'pacman -Scc --noconfirm'
 $updated_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort) -join '`n'
 
 if ($current_pkgs -eq $updated_pkgs) {
-  echo "Create7z=no"      | Out-File -FilePath $env:GITHUB_PATH -Append
-  echo "`n$grn** No update needed **$rst`n"
+  echo "Create7z=no"  | Out-File -FilePath $env:GITHUB_ENV -Append
+  echo "`n** No update needed **`n"
 } else {
-  echo "Create7z=yes" | Out-File -FilePath $env:GITHUB_PATH -Append
+  echo "Create7z=yes" | Out-File -FilePath $env:GITHUB_ENV -Append
   echo "`n$grn** Creating and Uploading MSYS2 tools 7z **$rst`n"
 }
