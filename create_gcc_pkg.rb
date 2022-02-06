@@ -77,7 +77,7 @@ module CreateMingwGCC
       if current_pkgs == updated_pkgs.join
         File.write ENV['GITHUB_ENV'], "Create7z=no\n", mode: 'a'
         STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
-        exit 0
+#        exit 0
       else
         File.write ENV['GITHUB_ENV'], "Create7z=yes\n", mode: 'a'
         STDOUT.syswrite "\n#{GRN}** Creating and Uploading #{@pkg_name} gcc tools 7z **#{RST}\n\n"

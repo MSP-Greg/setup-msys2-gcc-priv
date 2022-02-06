@@ -43,7 +43,7 @@ jobs:
 
       - name: Create MSYS2 tools 7z
         timeout-minutes: 10
-        if: env.Create7z == 'yes'
+#        if: env.Create7z == 'yes'
         run:  ruby create_msys2_pkg.rb
 
       - name: upload asset
