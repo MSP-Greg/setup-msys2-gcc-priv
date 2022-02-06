@@ -44,7 +44,7 @@ module CreateMingwGCC
         exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Syuu  --noconfirm'"
         system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
 
-        STDOUT.syswrite "\n#{YEL}#{LINE}Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
+        STDOUT.syswrite "\n#{YEL}#{LINE} Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
           "#{YEL}#{(base_gcc + base_ruby).join ' '}#{RST}\n\n"
         exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -S #{args} #{pkgs}"
       end
@@ -69,12 +69,12 @@ module CreateMingwGCC
       install_gcc
 
       updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
-        .lines.select { |l| l.start_with? @pkg_pre }.join
+        .lines.select { |l| l.start_with? @pkg_pre }
 
-      STDOUT.syswrite "\n#{YEL}#{LINE} Installed #{@pkg_pre[0..-2]} packages#{RST}\n"
-      STDOUT.syswrite "#{updated_pkgs}\n\n"
+      array_2_column updated_pkgs.map { |el| el.strip.gsub @pkg_pre, ''}, 48,
+        "Installed #{@pkg_pre[0..-2]} Packages"
 
-      if current_pkgs == updated_pkgs
+      if current_pkgs == updated_pkgs.join
         File.write ENV['GITHUB_ENV'], "Create7z=no\n", mode: 'a'
         STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
         exit 0
@@ -138,6 +138,22 @@ module CreateMingwGCC
       Dir.chdir TAR_DIR do
         system "\"#{SEVEN}\" a #{tar_path}"
       end
+    end
+
+    def array_2_column(ary, wid, hdr)
+      pad = (wid - hdr.length - 5)/2
+
+      hdr_pad = pad > 0 ? "#{DASH * pad} #{hdr} #{DASH * pad}" : hdr
+
+      STDOUT.syswrite "\n#{YEL}#{hdr_pad.ljust wid}#{hdr_pad}#{RST}\n"
+
+      mod = ary.length % 2
+      split  = ary.length/2
+      offset = split + mod
+      (0...split).each do
+        |i| STDOUT.syswrite "#{ary[i].ljust wid}#{ary[i + offset]}\n"
+      end
+      STDOUT.syswrite "#{ary[split]}\n" if mod == 1
     end
   end
 end

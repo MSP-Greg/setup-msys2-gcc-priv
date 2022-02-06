@@ -11,14 +11,30 @@ $yel  = "`e[93m"
 $grn  = "`e[92m"
 $rst  = "`e[0m"
 
+function Array-2-Column($ary, $wid, $hdr) {
+  $pad = [int][Math]::Floor(($wid - $hdr.length - 5)/2)
+
+  $hdr_pad = ($pad -gt 0) ? "$($dash * $pad) $hdr $($dash * $pad)" : $hdr
+
+  echo "`n$yel$($hdr_pad.PadRight($wid))$hdr_pad$rst"
+
+  $mod = $ary.length % 2
+  $split  = [int][Math]::Floor($ary.length/2)
+  $offset = $split + $mod
+  for ($i = 0; $i -lt $split; $i ++) {
+    echo "$($ary[$i].PadRight($wid))$($ary[$i + $offset])"
+  }
+  if ($mod -eq 1) { echo $ary[$split] }
+}
+
 function Run-Check($msg, $cmd) {
-  Write-Host "`n$yel$line $msg$rst"
+  echo "`n$yel$line $msg$rst"
   if (!$cmd) { $cmd = $msg }
   iex $cmd
   if ($LastExitCode -and $LastExitCode -ne 0) { exit 1 }
 }
 
-$current_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort) -join '`n'
+$current_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort) -join "`n"
 
 Run-Check 'pacman -Syyuu --noconfirm'
 taskkill /f /fi "MODULES eq msys-2.0.dll"
@@ -31,7 +47,11 @@ Run-Check "Install MSYS2 packages$rst`n$yel$pkgs" "pacman -S --noconfirm --neede
 
 Run-Check 'Clean packages' 'pacman -Scc --noconfirm'
 
-$updated_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort) -join '`n'
+$updated_pkgs = $(pacman -Q | grep -v ^mingw-w64- | sort)
+
+Array-2-Column $updated_pkgs 38 'Installed MSYS2 Packages'
+
+$updated_pkgs = $updated_pkgs -join "`n"
 
 if ($current_pkgs -eq $updated_pkgs) {
   echo "Create7z=no"  | Out-File -FilePath $env:GITHUB_ENV -Append

@@ -3524,7 +3524,7 @@ var isPlainObject = __nccwpck_require__(3287);
 var nodeFetch = _interopDefault(__nccwpck_require__(467));
 var requestError = __nccwpck_require__(537);
 
-const VERSION = "5.6.2";
+const VERSION = "5.6.3";
 
 function getBufferResponse(response) {
   return response.arrayBuffer();
@@ -9785,6 +9785,14 @@ module.exports = require("assert");
 
 /***/ }),
 
+/***/ 3129:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("child_process");
+
+/***/ }),
+
 /***/ 8614:
 /***/ ((module) => {
 
@@ -9935,7 +9943,7 @@ var __webpack_exports__ = {};
 
 
 
-const fs          = __nccwpck_require__(5747)
+const cp          = __nccwpck_require__(3129)
 const core        = __nccwpck_require__(2186)
 const { Octokit } = __nccwpck_require__(5375)
 const { retry }   = __nccwpck_require__(6298)
@@ -9946,7 +9954,7 @@ const tarExt = '.7z'
 const updateBody = (releaseBody, releaseName) => {
   const re = new RegExp('^\\*\\*' + releaseName + ':\\*\\* ([^\\r]+)', 'm')
   // (match, p1, p2, offset, str)
-  return releaseBody.replace(re, () => `**${releaseName}:** gcc package   Run No: ${process.env.GITHUB_RUN_NUMBER}`)
+  return releaseBody.replace(re, () => `**${releaseName}:** 7z package   Run No: ${process.env.GITHUB_RUN_NUMBER}`)
 }
 
 const run = async () => {
@@ -9957,8 +9965,17 @@ const run = async () => {
 
     const gccTar = `${releaseName}${tarExt}`
 
-    // application/x-7z-compressed  application/octet-stream
-    const assetContentType = 'application/x-7z-compressed'
+    console.time('  Upload 7z')
+
+    const cmd = `gc release upload ${releaseTag} ${gccTar} --clobber`
+
+    console.log(`[command]${cmd}`)
+    cp.execSync(cmd, {stdio: ['ignore', 'inherit', 'inherit']})
+
+    console.timeEnd('  Upload 7z')
+
+    // wait for file processing
+    await new Promise(r => setTimeout(r, 5000))
 
     // Get owner and repo from context of payload that triggered the action
     const [ owner, repo ] = process.env.GITHUB_REPOSITORY.split('/')
@@ -9971,99 +9988,10 @@ const run = async () => {
       timeZone: 'America/Chicago'
     })
 
-    // Get releaseId and uploadUrl needed for asset processing
-    const { data: { id: releaseId, upload_url: uploadUrl }
-    } = await octokit.repos.getReleaseByTag({
-      owner: owner,
-      repo: repo,
-      tag: releaseTag
-    })
-
-    const releases = await octokit.repos.listReleaseAssets({
-      owner: owner,
-      repo: repo,
-      release_id: releaseId
-    })
-    // console.log(releases);
-
-    let assets = new Map()
-
-    releases.data.forEach(e => assets.set(e.name, e.id))
-
-    const releaseIdOld = assets.get(gccTar)
-
-    // release shouldn't exist, for cleaning
-    const releaseIdNewBad = assets.get(`new-${gccTar}`)
-    if ( releaseIdNewBad) {
-      console.log('  Delete bad new')
-      await octokit.repos.deleteReleaseAsset({
-        owner: owner,
-        repo: repo,
-        asset_id: releaseIdNewBad
-      })
-    }
-
-    // Setup headers for API call
-    const headers = {
-      'content-type': assetContentType,
-      'content-length': fs.statSync(gccTar).size
-    }
-
-    console.time('  Upload 7z')
-
-    // Upload ruby file, use prefix 'new-', rename later
-    // https://developer.github.com/v3/repos/releases/#upload-a-release-asset
-    // https://octokit.github.io/rest.js/v17#repos-upload-release-asset
-    let fileData = fs.readFileSync(gccTar)
-    const { data: { id: releaseIdNew }
-    } = await octokit.repos.uploadReleaseAsset({
-      url: uploadUrl,
-      headers,
-      name: `new-${gccTar}`,
-      data: fileData
-    })
-    fileData = null
-
-    console.timeEnd('  Upload 7z')
-
-    // wait for file processing
-    await new Promise(r => setTimeout(r, 10000))
-
-    console.time('    Replace')
-
-    if (releaseIdOld) {
-      console.log(' rename current to old')
-      await octokit.repos.updateReleaseAsset({
-        owner: owner,
-        repo: repo,
-        asset_id: releaseIdOld,
-        name: `old-${gccTar}`
-      })
-    }
-
-    console.log(' rename new to current')
-    await octokit.repos.updateReleaseAsset({
-      owner: owner,
-      repo: repo,
-      asset_id: releaseIdNew,
-      name: gccTar
-    })
-
-    console.timeEnd('    Replace')
-
-    if (releaseIdOld) {
-      console.log(' delete old')
-      await octokit.repos.deleteReleaseAsset({
-        owner: owner,
-        repo: repo,
-        asset_id: releaseIdOld
-      })
-    }
-
     console.time('Update Info')
 
-    // Get Release body
-    const {data: { body: releaseBody }
+    // Get releaseId and Release body
+    const {data: { body: releaseBody, id: releaseId }
     } = await octokit.repos.getReleaseByTag({
       owner: owner,
       repo: repo,
