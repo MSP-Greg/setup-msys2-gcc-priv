@@ -26,7 +26,7 @@ const run = async () => {
 
     console.time('  Upload 7z')
 
-    const cmd = `gh release upload ${releaseTag} ${gccTar} --clobber`
+    const cmd = `gh release upload ${releaseTag} ./${gccTar} --clobber`
 
     console.log(`[command]${cmd}`)
     cp.execSync(cmd, {stdio: ['ignore', 'inherit', 'inherit']})
