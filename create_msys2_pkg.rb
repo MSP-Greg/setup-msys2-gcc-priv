@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require 'fileutils'
+require_relative 'github_api'
 
 module CreateMSYS2Tools
   class << self
+
+    include GitHubAPI
 
     MSYS2_ROOT = 'C:/msys64'
     TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
@@ -54,6 +57,8 @@ module CreateMSYS2Tools
     end
 
     def run
+      time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
+
       remove_non_msys2
 
       remove_duplicate_files
@@ -64,6 +69,28 @@ module CreateMSYS2Tools
       Dir.chdir MSYS2_ROOT do
         system "\"#{SEVEN}\" a #{tar_path}"
       end
+
+      # upload release asset using 'GitHub CLI'
+      unless system("gh release upload #{TAG} msys2.7z --clobber")
+        STDOUT.syswrite "\nUpload of new release asset failed!\n"
+        exit 1
+      end
+
+      # update package info in release notes
+      gh_api_http do |http|
+        resp_obj = v3_get http, USER_REPO, "releases/tags/#{TAG}"
+        body = resp_obj['body']
+        id   = resp_obj['id']
+
+        h = { 'body' => new_body(body, 'msys2', time, BUILD_NUMBER) }
+        v3_patch http, USER_REPO, "releases/#{id}", h
+      end
+    end
+
+    def new_body(old_body, name, time, build_number)
+      old_body.sub(/(^\| +\*\*#{name}\*\* +\|).+/) {
+        "#{$1} #{time} | #{build_number.rjust 6} |"
+      }
     end
   end
 end

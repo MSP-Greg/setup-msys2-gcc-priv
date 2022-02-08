@@ -7,9 +7,12 @@
 # Hence, many of the 'doc' related files in the 'share' folder are removed.
 
 require 'fileutils'
+require_relative 'github_api'
 
 module CreateMingwGCC
   class << self
+
+    include GitHubAPI
 
     MSYS2_ROOT = "C:/msys64"
     TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
@@ -50,6 +53,42 @@ module CreateMingwGCC
       end
     end
 
+    # removes files contained in 'share' folder to reduce 7z file size
+    def clean_package
+      share = "#{TAR_DIR}/#{@pkg_name}/share"
+
+      Dir.chdir "#{share}/doc" do
+        ary = Dir.glob "*"
+        ary.each { |dir| FileUtils.remove_dir dir }
+      end
+
+      Dir.chdir "#{share}/info" do
+        ary = Dir.glob "*.gz"
+        ary.each { |file| FileUtils.remove_file file }
+      end
+
+      Dir.chdir "#{share}/man" do
+        ary = Dir.glob "**/*.gz"
+        ary.each { |file| FileUtils.remove_file file }
+      end
+
+      # remove entries in 'files' file so updates won't log warnings
+      Dir.chdir "#{TAR_DIR}/#{LOCAL}" do
+        ary = Dir.glob "#{@pkg_pre}*/files"
+        ary.each do |fn|
+          File.open(fn, mode: 'r+b') { |f|
+            str = f.read
+            f.truncate 0
+            f.rewind
+            str.gsub!(/^#{@pkg_name}\/share\/doc\/\S+\s*/m , '')
+            str.gsub!(/^#{@pkg_name}\/share\/info\/\S+\s*/m, '')
+            str.gsub!(/^#{@pkg_name}\/share\/man\/\S+\s*/m , '')
+            f.write "#{str.strip}\n\n"
+          }
+        end
+      end
+    end
+
     def run
       case ARGV[0].downcase
       when 'ucrt64'
@@ -68,6 +107,8 @@ module CreateMingwGCC
 
       install_gcc
 
+      time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
+
       updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
         .lines.select { |l| l.start_with? @pkg_pre }
 
@@ -75,15 +116,13 @@ module CreateMingwGCC
         "Installed #{@pkg_pre[0..-2]} Packages"
 
       if current_pkgs == updated_pkgs.join
-        File.write ENV['GITHUB_ENV'], "Create7z=no\n", mode: 'a'
         STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
 #        exit 0
       else
-        File.write ENV['GITHUB_ENV'], "Create7z=yes\n", mode: 'a'
         STDOUT.syswrite "\n#{GRN}** Creating and Uploading #{@pkg_name} gcc tools 7z **#{RST}\n\n"
       end
 
-      Dir.chdir(TEMP) do
+      Dir.chdir TEMP do
         FileUtils.mkdir_p "msys64/#{SYNC}"
         FileUtils.mkdir_p "msys64/#{LOCAL}"
       end
@@ -103,41 +142,35 @@ module CreateMingwGCC
 
       FileUtils.copy_entry "#{MSYS2_ROOT}/#{@pkg_name}", "#{TAR_DIR}/#{@pkg_name}"
 
-      Dir.chdir "#{TAR_DIR}/#{@pkg_name}/share/doc" do
-        ary = Dir.glob "*"
-        ary.each { |dir| FileUtils.remove_dir dir }
-      end
-
-      Dir.chdir "#{TAR_DIR}/#{@pkg_name}/share/info" do
-        ary = Dir.glob "*.gz"
-        ary.each { |file| FileUtils.remove_file file }
-      end
-
-      Dir.chdir "#{TAR_DIR}/#{@pkg_name}/share/man" do
-        ary = Dir.glob "**/*.gz"
-        ary.each { |file| FileUtils.remove_file file }
-      end
-
-      Dir.chdir "#{TAR_DIR}/#{LOCAL}" do
-        ary = Dir.glob "#{@pkg_pre}*/files"
-        ary.each do |fn|
-          File.open(fn, mode: 'r+b') { |f|
-            str = f.read
-            f.truncate 0
-            f.rewind
-            str.gsub!(/^#{@pkg_name}\/share\/doc\/\S+\s*/m , '')
-            str.gsub!(/^#{@pkg_name}\/share\/info\/\S+\s*/m, '')
-            str.gsub!(/^#{@pkg_name}\/share\/man\/\S+\s*/m , '')
-            f.write "#{str.strip}\n\n"
-          }
-        end
-      end
+      clean_package
 
       # create 7z file
       tar_path = "#{Dir.pwd}\\#{@pkg_name}.7z".gsub '/', '\\'
       Dir.chdir TAR_DIR do
         system "\"#{SEVEN}\" a #{tar_path}"
       end
+
+      # upload release asset using 'GitHub CLI'
+      unless system("gh release upload #{TAG} #{@pkg_name}.7z --clobber")
+        STDOUT.syswrite "\nUpload of new release asset failed!\n"
+        exit 1
+      end
+
+      # update package info in release notes
+      gh_api_http do |http|
+        resp_obj = v3_get http, USER_REPO, "releases/tags/#{TAG}"
+        body = resp_obj['body']
+        id   = resp_obj['id']
+
+        h = { 'body' => new_body(body, 'msys2', time, BUILD_NUMBER) }
+        v3_patch http, USER_REPO, "releases/#{id}", h
+      end
+    end
+
+    def new_body(old_body, @pkg_name, time, build_number)
+      old_body.sub(/(^\| +\*\*#{name}\*\* +\|).+/) {
+        "#{$1} #{time} | #{build_number.rjust 6} |"
+      }
     end
 
     def array_2_column(ary, wid, hdr)
