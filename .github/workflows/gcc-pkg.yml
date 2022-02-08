@@ -37,10 +37,6 @@ jobs:
 #        timeout-minutes: 15
 #        run: ./clean.ps1
 
-      - name: Update msys2
-        run:  ./update_msys2.ps1
-        timeout-minutes: 15
-
       - name: Update msys2 tools 7z and Upload
 #        if: env.Create7z == 'yes'
         run:  ruby create_msys2_pkg.rb

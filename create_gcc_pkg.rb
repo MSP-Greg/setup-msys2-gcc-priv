@@ -7,50 +7,39 @@
 # Hence, many of the 'doc' related files in the 'share' folder are removed.
 
 require 'fileutils'
-require_relative 'github_api'
+require_relative 'common'
 
 module CreateMingwGCC
   class << self
 
-    include GitHubAPI
+    include Common
 
-    MSYS2_ROOT = "C:/msys64"
-    TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
     TAR_DIR = "#{TEMP}/msys64"
 
     SYNC  = 'var/lib/pacman/sync'
     LOCAL = 'var/lib/pacman/local'
 
-    SEVEN = "C:\\Program Files\\7-Zip\\7z"
-
-    DASH  = ENV['GITHUB_ACTIONS'] ? "\u2500".dup.force_encoding('utf-8') : 151.chr
-    LINE  = DASH * 40
-    GRN   = "\e[92m"
-    YEL   = "\e[93m"
-    RST   = "\e[0m"
-
     def install_gcc
+      msys_path = "#{MSYS2_ROOT}/usr/bin"
       args = '--noconfirm --noprogressbar --needed'
       # zlib required by gcc
       base_gcc  = %w[dlfcn make pkgconf libmangle-git tools-git gcc]
       base_ruby = %w[gmp libffi libyaml openssl ragel readline]
       pkgs = (base_gcc + base_ruby).unshift('').join " #{@pkg_pre}"
 
-      Dir.chdir("#{MSYS2_ROOT}/usr/bin") do
-        exit(1) unless system "sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+      exit(1) unless system "#{msys_path}/sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
 
-        STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
-        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Syuu  --noconfirm'"
-        system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
+      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
 
-        STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
-        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -Syuu  --noconfirm'"
-        system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
+      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
 
-        STDOUT.syswrite "\n#{YEL}#{LINE} Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
-          "#{YEL}#{(base_gcc + base_ruby).join ' '}#{RST}\n\n"
-        exit(1) unless system "#{MSYS2_ROOT}/usr/bin/pacman.exe -S #{args} #{pkgs}"
-      end
+      STDOUT.syswrite "\n#{YEL}#{LINE} Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
+        "#{YEL}#{(base_gcc + base_ruby).join ' '}#{RST}\n\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -S #{args} #{pkgs}"
     end
 
     # removes files contained in 'share' folder to reduce 7z file size
@@ -112,7 +101,7 @@ module CreateMingwGCC
       updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
         .lines.select { |l| l.start_with? @pkg_pre }
 
-      array_2_column updated_pkgs.map { |el| el.strip.gsub @pkg_pre, ''}, 48,
+      log_array_2_column updated_pkgs.map { |el| el.strip.gsub @pkg_pre, ''}, 48,
         "Installed #{@pkg_pre[0..-2]} Packages"
 
       if current_pkgs == updated_pkgs.join
@@ -158,35 +147,13 @@ module CreateMingwGCC
 
       # update package info in release notes
       gh_api_http do |http|
-        resp_obj = v3_get http, USER_REPO, "releases/tags/#{TAG}"
+        resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
         body = resp_obj['body']
         id   = resp_obj['id']
 
-        h = { 'body' => new_body(body, 'msys2', time, BUILD_NUMBER) }
-        v3_patch http, USER_REPO, "releases/#{id}", h
+        h = { 'body' => update_release_notes(body, 'msys2', time, BUILD_NUMBER) }
+        gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
       end
-    end
-
-    def new_body(old_body, @pkg_name, time, build_number)
-      old_body.sub(/(^\| +\*\*#{name}\*\* +\|).+/) {
-        "#{$1} #{time} | #{build_number.rjust 6} |"
-      }
-    end
-
-    def array_2_column(ary, wid, hdr)
-      pad = (wid - hdr.length - 5)/2
-
-      hdr_pad = pad > 0 ? "#{DASH * pad} #{hdr} #{DASH * pad}" : hdr
-
-      STDOUT.syswrite "\n#{YEL}#{hdr_pad.ljust wid}#{hdr_pad}#{RST}\n"
-
-      mod = ary.length % 2
-      split  = ary.length/2
-      offset = split + mod
-      (0...split).each do
-        |i| STDOUT.syswrite "#{ary[i].ljust wid}#{ary[i + offset]}\n"
-      end
-      STDOUT.syswrite "#{ary[split]}\n" if mod == 1
     end
   end
 end

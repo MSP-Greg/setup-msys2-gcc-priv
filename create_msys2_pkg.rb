@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 require 'fileutils'
-require_relative 'github_api'
+require_relative 'common'
 
 module CreateMSYS2Tools
   class << self
 
-    include GitHubAPI
+    include Common
 
     MSYS2_ROOT = 'C:/msys64'
     TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
@@ -15,7 +15,23 @@ module CreateMSYS2Tools
     SYNC = 'var/lib/pacman/sync'
     LOCAL = 'var/lib/pacman/local'
 
-    SEVEN = 'C:\Program Files\7-Zip\7z'
+    def update_msys2
+      msys_path = "#{MSYS2_ROOT}/usr/bin"
+
+      exit(1) unless system "#{msys_path}/sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+
+      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
+      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+
+      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
+      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+
+      pkgs = 'autoconf-wrapper autogen automake-wrapper bison diffutils libtool m4 make patch texinfo texinfo-tex compression'
+      STDOUT.syswrite "\n#{YEL}#{LINE} Install MSYS2 packages#{RST}\n#{YEL}#{pkgs}#{RST}\n"
+      exit(1) unless system "#{msys_path}/pacman.exe -S --noconfirm --needed --noprogressbar #{pkgs}"
+    end
 
     def remove_non_msys2
       dirs = %w[clang32 clang64 clangarm64 mingw32 mingw64 ucrt64]
@@ -30,6 +46,7 @@ module CreateMSYS2Tools
       end
     end
 
+    # remove files from 7z that are identical to Windows image
     def remove_duplicate_files
       files = Dir.glob('**/*', base: MSYS2_ROOT).reject { |fn| fn.start_with? LOCAL }
 
@@ -57,10 +74,24 @@ module CreateMSYS2Tools
     end
 
     def run
+      current_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
+        .lines.reject { |l| l.start_with? 'mingw-w64-' }
+
+      update_msys2
+
+      updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
+        .lines.reject { |l| l.start_with? 'mingw-w64-' }
+
       time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
 
-      remove_non_msys2
+      log_array_2_column updated_pkgs.map { |el| el.strip }, 48, "Installed MSYS2 Packages"
 
+      if current_pkgs == updated_pkgs
+        STDOUT.syswrite "\n** No update to MSYS2 tools needed **\n\n"
+        exit 0
+      end
+
+      remove_non_msys2
       remove_duplicate_files
       clean_database 'msys'
 
@@ -78,19 +109,18 @@ module CreateMSYS2Tools
 
       # update package info in release notes
       gh_api_http do |http|
-        resp_obj = v3_get http, USER_REPO, "releases/tags/#{TAG}"
+        resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
         body = resp_obj['body']
         id   = resp_obj['id']
 
-        h = { 'body' => new_body(body, 'msys2', time, BUILD_NUMBER) }
-        v3_patch http, USER_REPO, "releases/#{id}", h
+        h = { 'body' => update_release_notes(body, 'msys2', time, BUILD_NUMBER) }
+        gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
       end
     end
 
-    def new_body(old_body, name, time, build_number)
-      old_body.sub(/(^\| +\*\*#{name}\*\* +\|).+/) {
-        "#{$1} #{time} | #{build_number.rjust 6} |"
-      }
+    def exec_check(msg, cmd)
+      STDOUT.syswrite "\n#{YEL}#{LINE} #{msg}#{RST}\n"
+      exit 1 unless system cmd
     end
   end
 end
