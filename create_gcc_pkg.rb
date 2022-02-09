@@ -80,7 +80,7 @@ module CreateMingwGCC
       when 'mingw32'
         @pkg_name = 'mingw32' ; @pkg_pre = 'mingw-w64-i686-'
       else
-        puts 'Invalid package type, must be ucrt64, mingw64, or mingw32'
+        STDOUT.syswrite "Invalid package type, must be ucrt64, mingw64, or mingw32\n"
         exit 1
       end
 
