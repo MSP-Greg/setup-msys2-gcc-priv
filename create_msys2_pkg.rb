@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Original code by MSP-Greg
+# This script creates a 7z file of the MSYS2 base tools (located in usr/bin)
+# for use with GitHub Actions.  Since these files are installed on the Actions
+# Windows runner's hard drive, smaller zip files speed up the installation.
+# Hence, many of the 'doc' related files in the 'share' folder are removed.
+
 require 'fileutils'
 require_relative 'common'
 
@@ -16,21 +22,11 @@ module CreateMSYS2Tools
     LOCAL = 'var/lib/pacman/local'
 
     def update_msys2
-      msys_path = "#{MSYS2_ROOT}/usr/bin"
-
-      exit(1) unless system "#{msys_path}/sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
-
-      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
-      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
-
-      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
-      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+      pacman_syuu
 
       pkgs = 'autoconf-wrapper autogen automake-wrapper bison diffutils libtool m4 make patch texinfo texinfo-tex compression'
-      STDOUT.syswrite "\n#{YEL}#{LINE} Install MSYS2 packages#{RST}\n#{YEL}#{pkgs}#{RST}\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -S --noconfirm --needed --noprogressbar #{pkgs}"
+      exec_check "Install MSYS2 packages#{RST}\n#{YEL}#{pkgs}",
+        "#{PACMAN} -S --noconfirm --needed --noprogressbar #{pkgs}"
     end
 
     def remove_non_msys2
@@ -74,21 +70,19 @@ module CreateMSYS2Tools
     end
 
     def run
-      current_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
-        .lines.reject { |l| l.start_with? 'mingw-w64-' }
+      current_pkgs = %x[#{PACMAN} -Q].split("\n").reject { |l| l.start_with? 'mingw-w64-' }
 
       update_msys2
 
-      updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
-        .lines.reject { |l| l.start_with? 'mingw-w64-' }
+      updated_pkgs = %x[#{PACMAN} -Q].split("\n").reject { |l| l.start_with? 'mingw-w64-' }
 
       time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
 
-      log_array_2_column updated_pkgs.map { |el| el.strip }, 48, "Installed MSYS2 Packages"
+      log_array_2_column updated_pkgs, 48, "Installed MSYS2 Packages"
 
       if current_pkgs == updated_pkgs
         STDOUT.syswrite "\n** No update to MSYS2 tools needed **\n\n"
-        exit 0
+#        exit 0
       end
 
       remove_non_msys2
@@ -96,31 +90,14 @@ module CreateMSYS2Tools
       clean_database 'msys'
 
       # create 7z file
+      STDOUT.write "##[group]#{YEL}Create msys2 7z file#{RST}\n"
       tar_path = "#{Dir.pwd}\\msys2.7z".gsub '/', '\\'
       Dir.chdir MSYS2_ROOT do
-        system "\"#{SEVEN}\" a #{tar_path}"
+        exit 1 unless system "\"#{SEVEN}\" a #{tar_path}"
       end
+      STDOUT.write "##[endgroup]\n"
 
-      # upload release asset using 'GitHub CLI'
-      unless system("gh release upload #{TAG} msys2.7z --clobber")
-        STDOUT.syswrite "\nUpload of new release asset failed!\n"
-        exit 1
-      end
-
-      # update package info in release notes
-      gh_api_http do |http|
-        resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
-        body = resp_obj['body']
-        id   = resp_obj['id']
-
-        h = { 'body' => update_release_notes(body, 'msys2', time, BUILD_NUMBER) }
-        gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
-      end
-    end
-
-    def exec_check(msg, cmd)
-      STDOUT.syswrite "\n#{YEL}#{LINE} #{msg}#{RST}\n"
-      exit 1 unless system cmd
+      upload_7z_update 'msys2', time
     end
   end
 end

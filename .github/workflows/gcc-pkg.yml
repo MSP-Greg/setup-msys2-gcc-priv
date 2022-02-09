@@ -38,7 +38,6 @@ jobs:
 #        run: ./clean.ps1
 
       - name: Update msys2 tools 7z and Upload
-#        if: env.Create7z == 'yes'
         run:  ruby create_msys2_pkg.rb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

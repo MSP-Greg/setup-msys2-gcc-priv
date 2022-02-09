@@ -25,7 +25,8 @@ module Common
 
   # Repo specific constants
   TAG = 'msys2-gcc-pkgs'
-  MSYS2_ROOT = "C:/msys64"
+  MSYS2_ROOT = 'C:/msys64'
+  PACMAN     = 'C:/msys64/usr/bin/pacman.exe'
 
   def gh_api_graphql(http, query)
     body = {}
@@ -74,10 +75,48 @@ module Common
     resp.code == '200' ? JSON.parse(resp.body) : resp
   end
 
-  def update_release_notes(old_body, name, time, build_number)
+  def upload_7z_update(pkg_name, time)
+    # upload release asset using 'GitHub CLI'
+    unless system "gh release upload #{TAG} #{pkg_name}.7z --clobber"
+      STDOUT.syswrite "\nUpload of new release asset failed!\n"
+      exit 1
+    end
+
+    # update package info in release notes
+    gh_api_http do |http|
+      resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
+      body = resp_obj['body']
+      id   = resp_obj['id']
+
+      h = { 'body' => update_release_notes(body, pkg_name, time) }
+      gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
+    end
+  end
+
+  def update_release_notes(old_body, name, time)
     old_body.sub(/(^\| +\*\*#{name}\*\* +\|).+/) {
-      "#{$1} #{time} | #{build_number.rjust 6} |"
+      "#{$1} #{time} | #{BUILD_NUMBER.rjust 6} |"
     }
+  end
+
+  def pacman_syuu
+    usr_bin = "#{MSYS2_ROOT}/usr/bin"
+
+    exit 1 unless system "#{usr_bin}/sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+
+    exec_check 'Updating all installed packages', "#{PACMAN} -Syuu  --noconfirm"
+
+    system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+
+    exec_check 'Updating all installed packages (2nd pass)', "#{PACMAN} -Syuu  --noconfirm"
+
+    system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
+  end
+
+  # logs message and runs cmd, checking for error
+  def exec_check(msg, cmd)
+    STDOUT.syswrite "\n#{YEL}#{LINE} #{msg}#{RST}\n"
+    exit 1 unless system cmd
   end
 
   def log_array_2_column(ary, wid, hdr)

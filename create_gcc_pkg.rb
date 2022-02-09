@@ -20,26 +20,19 @@ module CreateMingwGCC
     LOCAL = 'var/lib/pacman/local'
 
     def install_gcc
-      msys_path = "#{MSYS2_ROOT}/usr/bin"
       args = '--noconfirm --noprogressbar --needed'
       # zlib required by gcc
       base_gcc  = %w[dlfcn make pkgconf libmangle-git tools-git gcc]
       base_ruby = %w[gmp libffi libyaml openssl ragel readline]
+
       pkgs = (base_gcc + base_ruby).unshift('').join " #{@pkg_pre}"
 
-      exit(1) unless system "#{msys_path}/sed -i 's/^CheckSpace/#CheckSpace/g' C:/msys64/etc/pacman.conf"
+      # may not be needed, but...
+      pacman_syuu
 
-      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages#{RST}\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
-      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
-
-      STDOUT.syswrite "\n#{YEL}#{LINE} Updating all installed packages (2nd pass)#{RST}\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -Syuu  --noconfirm'"
-      system 'taskkill /f /fi "MODULES eq msys-2.0.dll"'
-
-      STDOUT.syswrite "\n#{YEL}#{LINE} Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
-        "#{YEL}#{(base_gcc + base_ruby).join ' '}#{RST}\n\n"
-      exit(1) unless system "#{msys_path}/pacman.exe -S #{args} #{pkgs}"
+      exec_check "Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
+        "#{YEL}#{(base_gcc + base_ruby).join ' '}",
+        "#{PACMAN} -S #{args} #{pkgs}"
     end
 
     # removes files contained in 'share' folder to reduce 7z file size
@@ -91,20 +84,18 @@ module CreateMingwGCC
         exit 1
       end
 
-      current_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
-        .lines.select { |l| l.start_with? @pkg_pre }.join
+      current_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? @pkg_pre }
 
       install_gcc
 
       time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
 
-      updated_pkgs = %x[#{MSYS2_ROOT}/usr/bin/pacman.exe -Q]
-        .lines.select { |l| l.start_with? @pkg_pre }
+      updated_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? @pkg_pre }
 
-      log_array_2_column updated_pkgs.map { |el| el.strip.gsub @pkg_pre, ''}, 48,
+      log_array_2_column updated_pkgs.map { |el| el.sub @pkg_pre, ''}, 48,
         "Installed #{@pkg_pre[0..-2]} Packages"
 
-      if current_pkgs == updated_pkgs.join
+      if current_pkgs == updated_pkgs
         STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
 #        exit 0
       else
@@ -134,26 +125,14 @@ module CreateMingwGCC
       clean_package
 
       # create 7z file
+      STDOUT.write "##[group]#{YEL}Create #{@pkg_name} 7z file#{RST}\n"
       tar_path = "#{Dir.pwd}\\#{@pkg_name}.7z".gsub '/', '\\'
       Dir.chdir TAR_DIR do
-        system "\"#{SEVEN}\" a #{tar_path}"
+        exit 1 unless system "\"#{SEVEN}\" a #{tar_path}"
       end
+      STDOUT.write "##[endgroup]\n"
 
-      # upload release asset using 'GitHub CLI'
-      unless system("gh release upload #{TAG} #{@pkg_name}.7z --clobber")
-        STDOUT.syswrite "\nUpload of new release asset failed!\n"
-        exit 1
-      end
-
-      # update package info in release notes
-      gh_api_http do |http|
-        resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
-        body = resp_obj['body']
-        id   = resp_obj['id']
-
-        h = { 'body' => update_release_notes(body, 'msys2', time, BUILD_NUMBER) }
-        gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
-      end
+      upload_7z_update @pkg_name, time
     end
   end
 end
