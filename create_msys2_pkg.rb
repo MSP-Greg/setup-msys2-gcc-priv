@@ -57,7 +57,7 @@ module CreateMSYS2Tools
           end
         end
       end
-      puts "Removed #{removed_files} files"
+      STDOUT.syswrite "Removed #{removed_files} files\n"
     end
 
     # remove unneeded database files
@@ -90,12 +90,12 @@ module CreateMSYS2Tools
       clean_database 'msys'
 
       # create 7z file
-      STDOUT.write "##[group]#{YEL}Create msys2 7z file#{RST}\n"
+      STDOUT.syswrite "##[group]#{YEL}Create msys2 7z file#{RST}\n"
       tar_path = "#{Dir.pwd}\\msys2.7z".gsub '/', '\\'
       Dir.chdir MSYS2_ROOT do
         exit 1 unless system "\"#{SEVEN}\" a #{tar_path}"
       end
-      STDOUT.write "##[endgroup]\n"
+      STDOUT.syswrite "##[endgroup]\n"
 
       upload_7z_update 'msys2', time
     end

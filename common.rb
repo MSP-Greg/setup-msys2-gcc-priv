@@ -44,7 +44,7 @@ module Common
       body = resp.body
       JSON.parse body, symbolize_names: true
     else
-      puts "resp.code #{resp.code}"
+      STDOUT.syswrite "resp.code #{resp.code}\n"
     end
   end
 

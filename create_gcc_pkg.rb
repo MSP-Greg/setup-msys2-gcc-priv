@@ -125,12 +125,12 @@ module CreateMingwGCC
       clean_package
 
       # create 7z file
-      STDOUT.write "##[group]#{YEL}Create #{@pkg_name} 7z file#{RST}\n"
+      STDOUT.syswrite "##[group]#{YEL}Create #{@pkg_name} 7z file#{RST}\n"
       tar_path = "#{Dir.pwd}\\#{@pkg_name}.7z".gsub '/', '\\'
       Dir.chdir TAR_DIR do
         exit 1 unless system "\"#{SEVEN}\" a #{tar_path}"
       end
-      STDOUT.write "##[endgroup]\n"
+      STDOUT.syswrite "##[endgroup]\n"
 
       upload_7z_update @pkg_name, time
     end
