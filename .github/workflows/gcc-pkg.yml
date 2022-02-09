@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         timeout-minutes: 10
 
-  main:
+  gcc:
     runs-on: windows-2022
     needs: msys2
     strategy:
