@@ -80,10 +80,12 @@ module CreateMSYS2Tools
 
       log_array_2_column updated_pkgs, 48, "Installed MSYS2 Packages"
 
-      if current_pkgs == updated_pkgs
-        STDOUT.syswrite "\n** No update to MSYS2 tools needed **\n\n"
+#      if current_pkgs == updated_pkgs
+#        STDOUT.syswrite "\n** No update to MSYS2 tools needed **\n\n"
 #        exit 0
-      end
+#      else
+        STDOUT.syswrite "\n#{GRN}** Creating and Uploading MSYS update 7z **#{RST}\n\n"
+#      end
 
       remove_non_msys2
       remove_duplicate_files

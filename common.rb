@@ -24,7 +24,7 @@ module Common
   RST   = "\e[0m"
 
   # Repo specific constants
-  TAG = 'msys2-gcc-pkgs'
+  TAG = 'msys2-gcc-pkgs' # GitHub release tag
   MSYS2_ROOT = 'C:/msys64'
   PACMAN     = 'C:/msys64/usr/bin/pacman.exe'
 
@@ -77,10 +77,13 @@ module Common
 
   def upload_7z_update(pkg_name, time)
     # upload release asset using 'GitHub CLI'
+    time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
     unless system "gh release upload #{TAG} #{pkg_name}.7z --clobber"
       STDOUT.syswrite "\nUpload of new release asset failed!\n"
       exit 1
     end
+    ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
+    STDOUT.syswrite "\n\nUpload 7z time: #{ttl_time} secs\n"
 
     # update package info in release notes
     gh_api_http do |http|

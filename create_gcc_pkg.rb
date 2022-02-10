@@ -19,25 +19,61 @@ module CreateMingwGCC
     SYNC  = 'var/lib/pacman/sync'
     LOCAL = 'var/lib/pacman/local'
 
+    PKG_NAME, PKG_PRE =
+      case ARGV[0].downcase
+      when 'ucrt64'
+        ['ucrt64', 'mingw-w64-ucrt-x86_64-']
+      when 'mingw64'
+        ['mingw64', 'mingw-w64-x86_64-']
+      when 'mingw32'
+        ['mingw32', 'mingw-w64-i686-']
+      else
+        STDOUT.syswrite "Invalid package type, must be ucrt64, mingw64, or mingw32\n"
+        exit 1
+      end
+
     def install_gcc
       args = '--noconfirm --noprogressbar --needed'
       # zlib required by gcc
       base_gcc  = %w[dlfcn make pkgconf libmangle-git tools-git gcc]
       base_ruby = %w[gmp libffi libyaml openssl ragel readline]
 
-      pkgs = (base_gcc + base_ruby).unshift('').join " #{@pkg_pre}"
+      pkgs = (base_gcc + base_ruby).unshift('').join " #{PKG_PRE}"
 
       # may not be needed, but...
       pacman_syuu
 
-      exec_check "Updating the following #{@pkg_pre[0..-2]} packages:#{RST}\n" \
+      exec_check "Updating the following #{PKG_PRE[0..-2]} packages:#{RST}\n" \
         "#{YEL}#{(base_gcc + base_ruby).join ' '}",
         "#{PACMAN} -S #{args} #{pkgs}"
     end
 
+    # copies needed files from C:/msys64 to TEMP
+    def copy_to_temp
+      Dir.chdir TEMP do
+        FileUtils.mkdir_p "msys64/#{SYNC}"
+        FileUtils.mkdir_p "msys64/#{LOCAL}"
+      end
+
+      Dir.chdir "#{MSYS2_ROOT}/#{SYNC}" do
+        FileUtils.cp "#{PKG_NAME}.db", "#{TAR_DIR}/#{SYNC}"
+        FileUtils.cp "#{PKG_NAME}.db.sig", "#{TAR_DIR}/#{SYNC}"
+      end
+
+      ary = Dir.glob "#{PKG_PRE}*", base: "#{MSYS2_ROOT}/#{LOCAL}"
+
+      local = "#{TAR_DIR}/#{LOCAL}"
+
+      Dir.chdir "#{MSYS2_ROOT}/#{LOCAL}" do
+        ary.each { |dir| FileUtils.copy_entry dir, "#{local}/#{dir}" }
+      end
+
+      FileUtils.copy_entry "#{MSYS2_ROOT}/#{PKG_NAME}", "#{TAR_DIR}/#{PKG_NAME}"
+    end
+
     # removes files contained in 'share' folder to reduce 7z file size
     def clean_package
-      share = "#{TAR_DIR}/#{@pkg_name}/share"
+      share = "#{TAR_DIR}/#{PKG_NAME}/share"
 
       Dir.chdir "#{share}/doc" do
         ary = Dir.glob "*"
@@ -56,15 +92,15 @@ module CreateMingwGCC
 
       # remove entries in 'files' file so updates won't log warnings
       Dir.chdir "#{TAR_DIR}/#{LOCAL}" do
-        ary = Dir.glob "#{@pkg_pre}*/files"
+        ary = Dir.glob "#{PKG_PRE}*/files"
         ary.each do |fn|
           File.open(fn, mode: 'r+b') { |f|
             str = f.read
             f.truncate 0
             f.rewind
-            str.gsub!(/^#{@pkg_name}\/share\/doc\/\S+\s*/m , '')
-            str.gsub!(/^#{@pkg_name}\/share\/info\/\S+\s*/m, '')
-            str.gsub!(/^#{@pkg_name}\/share\/man\/\S+\s*/m , '')
+            str.gsub!(/^#{PKG_NAME}\/share\/doc\/\S+\s*/m , '')
+            str.gsub!(/^#{PKG_NAME}\/share\/info\/\S+\s*/m, '')
+            str.gsub!(/^#{PKG_NAME}\/share\/man\/\S+\s*/m , '')
             f.write "#{str.strip}\n\n"
           }
         end
@@ -72,67 +108,38 @@ module CreateMingwGCC
     end
 
     def run
-      case ARGV[0].downcase
-      when 'ucrt64'
-        @pkg_name = 'ucrt64'  ; @pkg_pre = 'mingw-w64-ucrt-x86_64-'
-      when 'mingw64'
-        @pkg_name = 'mingw64' ; @pkg_pre = 'mingw-w64-x86_64-'
-      when 'mingw32'
-        @pkg_name = 'mingw32' ; @pkg_pre = 'mingw-w64-i686-'
-      else
-        STDOUT.syswrite "Invalid package type, must be ucrt64, mingw64, or mingw32\n"
-        exit 1
-      end
-
-      current_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? @pkg_pre }
+      current_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? PKG_PRE }
 
       install_gcc
 
       time = Time.now.utc.strftime '%Y-%m-%d %H:%M:%S UTC'
 
-      updated_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? @pkg_pre }
+      updated_pkgs = %x[#{PACMAN} -Q].split("\n").select { |l| l.start_with? PKG_PRE }
 
-      log_array_2_column updated_pkgs.map { |el| el.sub @pkg_pre, ''}, 48,
-        "Installed #{@pkg_pre[0..-2]} Packages"
+      # log current packages
+      log_array_2_column updated_pkgs.map { |el| el.sub PKG_PRE, ''}, 48,
+        "Installed #{PKG_PRE[0..-2]} Packages"
 
-      if current_pkgs == updated_pkgs
-        STDOUT.syswrite "\n** No update to #{@pkg_name} gcc tools needed **\n\n"
+#      if current_pkgs == updated_pkgs
+#        STDOUT.syswrite "\n** No update to #{PKG_NAME} gcc tools needed **\n\n"
 #        exit 0
-      else
-        STDOUT.syswrite "\n#{GRN}** Creating and Uploading #{@pkg_name} gcc tools 7z **#{RST}\n\n"
-      end
+#      else
+        STDOUT.syswrite "\n#{GRN}** Creating and Uploading #{PKG_NAME} gcc tools 7z **#{RST}\n\n"
+#      end
 
-      Dir.chdir TEMP do
-        FileUtils.mkdir_p "msys64/#{SYNC}"
-        FileUtils.mkdir_p "msys64/#{LOCAL}"
-      end
-
-      Dir.chdir "#{MSYS2_ROOT}/var/lib/pacman/sync" do
-        FileUtils.cp "#{@pkg_name}.db", "#{TAR_DIR}/#{SYNC}"
-        FileUtils.cp "#{@pkg_name}.db.sig", "#{TAR_DIR}/#{SYNC}"
-      end
-
-      ary = Dir.glob "#{@pkg_pre}*", base: "#{MSYS2_ROOT}/#{LOCAL}"
-
-      local = "#{TAR_DIR}/#{LOCAL}"
-
-      Dir.chdir "#{MSYS2_ROOT}/#{LOCAL}" do
-        ary.each { |dir| FileUtils.copy_entry dir, "#{local}/#{dir}" }
-      end
-
-      FileUtils.copy_entry "#{MSYS2_ROOT}/#{@pkg_name}", "#{TAR_DIR}/#{@pkg_name}"
+      copy_to_temp
 
       clean_package
 
       # create 7z file
-      STDOUT.syswrite "##[group]#{YEL}Create #{@pkg_name} 7z file#{RST}\n"
-      tar_path = "#{Dir.pwd}\\#{@pkg_name}.7z".gsub '/', '\\'
+      STDOUT.syswrite "##[group]#{YEL}Create #{PKG_NAME} 7z file#{RST}\n"
+      tar_path = "#{Dir.pwd}\\#{PKG_NAME}.7z".gsub '/', '\\'
       Dir.chdir TAR_DIR do
         exit 1 unless system "\"#{SEVEN}\" a #{tar_path}"
       end
       STDOUT.syswrite "##[endgroup]\n"
 
-      upload_7z_update @pkg_name, time
+      upload_7z_update PKG_NAME, time
     end
   end
 end
