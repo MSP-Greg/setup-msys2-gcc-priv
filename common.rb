@@ -10,8 +10,9 @@ module Common
   TOKEN        = ENV['GITHUB_TOKEN']
   BUILD_NUMBER = ENV['GITHUB_RUN_NUMBER']
 
-  GH_NAME = "#{USER_REPO}-actions"
-  GH_API  = 'api.github.com'
+  GH_NAME   = "#{USER_REPO}-actions"
+  GH_API    = 'api.github.com'
+  GH_UPLOAD = 'uploads.github.com'
 
   TEMP = ENV.fetch('RUNNER_TEMP') { ENV.fetch('RUNNER_WORKSPACE') { ENV['TEMP'] } }
 
@@ -54,20 +55,28 @@ module Common
     end
   end
 
-  def gh_api_v3_get(http, user_repo, suffix)
-    req = Net::HTTP::Get.new "/repos/#{user_repo}/#{suffix}"
+  def gh_upload_http
+    Net::HTTP.start(GH_UPLOAD, 443, :use_ssl => true) do |http|
+      yield http
+    end
+  end
+
+  def set_v3_common_headers(req)
     req['User-Agent'] = GH_NAME
     req['Authorization'] = "token #{TOKEN}"
     req['Accept'] = 'application/vnd.github.v3+json'
+  end
+
+  def gh_api_v3_get(http, user_repo, suffix)
+    req = Net::HTTP::Get.new "/repos/#{user_repo}/#{suffix}"
+    set_v3_common_headers req
     resp = http.request req
     resp.code == '200' ? JSON.parse(resp.body) : resp
   end
 
   def gh_api_v3_patch(http, user_repo, suffix, hsh)
     req = Net::HTTP::Patch.new "/repos/#{user_repo}/#{suffix}"
-    req['User-Agent'] = GH_NAME
-    req['Authorization'] = "token #{TOKEN}"
-    req['Accept'] = 'application/vnd.github.v3+json'
+    set_v3_common_headers req
     req['Content-Type'] = 'application/json; charset=utf-8'
     req.body = JSON.generate hsh
 
@@ -75,25 +84,112 @@ module Common
     resp.code == '200' ? JSON.parse(resp.body) : resp
   end
 
-  def upload_7z_update(pkg_name, time)
-    # upload release asset using 'GitHub CLI'
-    time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
-    unless system "gh release upload #{TAG} #{pkg_name}.7z --clobber"
-      STDOUT.syswrite "\nUpload of new release asset failed!\n"
+  def gh_api_v3_delete(http, user_repo, suffix)
+    req = Net::HTTP::Delete.new "/repos/#{user_repo}/#{suffix}"
+    set_v3_common_headers req
+    resp = http.request req
+    resp.code == '204' ? nil : resp
+  end
+
+  def gh_api_v3_upload(http, user_repo, suffix, file)
+    unless File.exist?(file) && File.readable?(file)
+      STDOUT.syswrite "#{RED}File #{file} doesn't exist or isn't readable#{RST}\n"
       exit 1
     end
-    ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
-    STDOUT.syswrite "\n\nUpload 7z time: #{ttl_time} secs\n"
 
-    # update package info in release notes
+    req = Net::HTTP::Post.new "/repos/#{user_repo}/#{suffix}"
+    set_v3_common_headers req
+    req['Content-Type'] = 'application/x-7z-compressed'
+    req['Content-Length'] = File.size file
+    io = File.open file, mode: 'rb'
+    req.body_stream = io
+    resp = http.request req
+    io.close unless io.closed?
+    resp.code == '201' ? JSON.parse(resp.body)['id'] : resp
+  end
+
+  def upload_7z_update(pkg_name, time)
+    resp_obj   = nil
+    body       = nil
+    release_id = nil
+    old_asset_exists = nil
+    new_asset_exists = nil
+    current_asset_id = nil
+    updated_asset_id = nil
+
+    STDOUT.syswrite "##[group]#{YEL}Upload #{pkg_name}.7z file & update release notes#{RST}\n"
+
+    # get release info
     gh_api_http do |http|
       resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
-      body = resp_obj['body']
-      id   = resp_obj['id']
+      body         = resp_obj['body']
+      release_id   = resp_obj['id']
+      assets       = resp_obj['assets']
 
-      h = { 'body' => update_release_notes(body, pkg_name, time) }
-      gh_api_v3_patch http, USER_REPO, "releases/#{id}", h
+      old_asset_exists = assets.any? { |asset| asset['name'] == "#{pkg_name}_old.7z" }
+      new_asset_exists = assets.any? { |asset| asset['name'] == "#{pkg_name}_new.7z" }
+
+      asset_obj = assets.find { |asset| asset['name'] == "#{pkg_name}.7z" }
+      current_asset_id = asset_obj['id'] if asset_obj
     end
+
+    unless current_asset_id
+      STDOUT.syswrite "##[endgroup]\n\n#{RED}current asset #{pkg_name}.7z not found#{RST}\n"
+      exit 1
+    end
+
+    if old_asset_exists
+      STDOUT.syswrite "##[endgroup]\n\n#{RED}old asset #{pkg_name}_old.7z exists#{RST}\n"
+      exit 1
+    end
+
+    if new_asset_exists
+      STDOUT.syswrite "##[endgroup]\n\n#{RED}new asset #{pkg_name}_new.7z exists#{RST}\n"
+      exit 1
+    end
+
+    # Upload new 7z package
+    gh_upload_http do |http|
+      time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
+
+      updated_asset_id = gh_api_v3_upload http, USER_REPO,
+        "releases/#{release_id}/assets?label=&name=#{pkg_name}_new.7z", "#{pkg_name}.7z"
+
+      ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
+      STDOUT.syswrite "Upload time: #{ttl_time} secs\n"
+    end
+
+    unless updated_asset_id
+      STDOUT.syswrite "##[endgroup]\n\n#{RED}updated_asset_id not found#{RST}\n"
+      exit 1
+    end
+
+    sleep 5.0
+
+    # Flip names and update release notes (body)
+    gh_api_http do |http|
+      time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
+
+      gh_api_v3_patch http, USER_REPO, "releases/assets/#{current_asset_id}", {'name' => "#{pkg_name}_old.7z"}
+      gh_api_v3_patch http, USER_REPO, "releases/assets/#{updated_asset_id}", {'name' => "#{pkg_name}.7z"}
+
+      ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
+      STDOUT.syswrite "Rename time: #{ttl_time} secs\n"
+
+      gh_api_v3_delete http, USER_REPO, "releases/assets/#{current_asset_id}"
+
+      # update package info in release notes
+      h = {'body' => update_release_notes(body, pkg_name, time)}
+      gh_api_v3_patch http, USER_REPO, "releases/#{release_id}", h
+    end
+
+    Net::HTTP.start('github.com', 443, :use_ssl => true) do |http|
+      req = Net::HTTP::Head.new "/#{USER_REPO}/releases/download/#{TAG}/#{pkg_name}.7z"
+      resp = http.request req
+      STDOUT.syswrite "\nDownload #{pkg_name}.7z test status #{resp.code} #{resp.message}\n"
+    end
+  ensure
+    STDOUT.syswrite "##[endgroup]\n"
   end
 
   def update_release_notes(old_body, name, time)
