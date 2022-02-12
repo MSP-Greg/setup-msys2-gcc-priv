@@ -178,7 +178,7 @@ module Common
 
       updated_asset_id = resp_obj['id']
 
-      ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
+      ttl_time = format '%5.2f', (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round(2)
       STDOUT.syswrite "Upload time: #{ttl_time} secs\n"
     end
 
@@ -199,7 +199,7 @@ module Common
       resp_obj = gh_api_v3_patch http, USER_REPO, "releases/assets/#{updated_asset_id}", {'name' => "#{pkg_name}.7z"}
       break unless response_ok resp_obj, 'PATCH - rename updated asset to current', actions_group: true
 
-      ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
+      ttl_time = format '%5.2f', (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round(2)
       STDOUT.syswrite "Rename time: #{ttl_time} secs\n"
 
       resp_obj = gh_api_v3_delete http, USER_REPO, "releases/assets/#{current_asset_id}"
