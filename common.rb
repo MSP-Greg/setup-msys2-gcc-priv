@@ -21,8 +21,10 @@ module Common
   DASH  = ENV['GITHUB_ACTIONS'] ? "\u2500".dup.force_encoding('utf-8') : 151.chr
   LINE  = DASH * 40
   GRN   = "\e[92m"
+  RED   = "\e[91m"
   YEL   = "\e[93m"
   RST   = "\e[0m"
+  END_GROUP = "##[endgroup]\n\n"
 
   # Repo specific constants
   TAG = 'msys2-gcc-pkgs' # GitHub release tag
@@ -105,7 +107,21 @@ module Common
     req.body_stream = io
     resp = http.request req
     io.close unless io.closed?
-    resp.code == '201' ? JSON.parse(resp.body)['id'] : resp
+    resp.code == '201' ? JSON.parse(resp.body) : resp
+  end
+
+  def response_ok(response_obj, msg, actions_group: false)
+    if response_obj.is_a? Net::HTTPResponse
+      out_str = (actions_group ? END_GROUP : '').dup
+      out_str << "#{RED}HTTP Error - #{msg} - #{response_obj.code} #{response_obj.message}#{RST}\n"
+      if (body = response_obj['body'])
+        out_str << "#{JSON.parse(body)}\n"
+      end
+      STDOUT.syswrite "#{out_str}\n"
+      false
+    else
+      true
+    end
   end
 
   def upload_7z_update(pkg_name, time)
@@ -122,6 +138,9 @@ module Common
     # get release info
     gh_api_http do |http|
       resp_obj = gh_api_v3_get http, USER_REPO, "releases/tags/#{TAG}"
+
+      break unless response_ok resp_obj, 'GET - release info response', actions_group: true
+
       body         = resp_obj['body']
       release_id   = resp_obj['id']
       assets       = resp_obj['assets']
@@ -134,17 +153,17 @@ module Common
     end
 
     unless current_asset_id
-      STDOUT.syswrite "##[endgroup]\n\n#{RED}current asset #{pkg_name}.7z not found#{RST}\n"
+      STDOUT.syswrite "#{END_GROUP}#{RED}current asset #{pkg_name}.7z not found#{RST}\n"
       exit 1
     end
 
     if old_asset_exists
-      STDOUT.syswrite "##[endgroup]\n\n#{RED}old asset #{pkg_name}_old.7z exists#{RST}\n"
+      STDOUT.syswrite "#{END_GROUP}#{RED}old asset #{pkg_name}_old.7z exists#{RST}\n"
       exit 1
     end
 
     if new_asset_exists
-      STDOUT.syswrite "##[endgroup]\n\n#{RED}new asset #{pkg_name}_new.7z exists#{RST}\n"
+      STDOUT.syswrite "#{END_GROUP}#{RED}new asset #{pkg_name}_new.7z exists#{RST}\n"
       exit 1
     end
 
@@ -152,15 +171,19 @@ module Common
     gh_upload_http do |http|
       time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
 
-      updated_asset_id = gh_api_v3_upload http, USER_REPO,
+      resp_obj = gh_api_v3_upload http, USER_REPO,
         "releases/#{release_id}/assets?label=&name=#{pkg_name}_new.7z", "#{pkg_name}.7z"
+
+      break unless response_ok resp_obj, 'POST - upload new 7z package', actions_group: true
+
+      updated_asset_id = resp_obj['id']
 
       ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
       STDOUT.syswrite "Upload time: #{ttl_time} secs\n"
     end
 
     unless updated_asset_id
-      STDOUT.syswrite "##[endgroup]\n\n#{RED}updated_asset_id not found#{RST}\n"
+      STDOUT.syswrite "#{END_GROUP}#{RED}updated_asset_id not found#{RST}\n"
       exit 1
     end
 
@@ -170,17 +193,22 @@ module Common
     gh_api_http do |http|
       time_start = Process.clock_gettime Process::CLOCK_MONOTONIC
 
-      gh_api_v3_patch http, USER_REPO, "releases/assets/#{current_asset_id}", {'name' => "#{pkg_name}_old.7z"}
-      gh_api_v3_patch http, USER_REPO, "releases/assets/#{updated_asset_id}", {'name' => "#{pkg_name}.7z"}
+      resp_obj = gh_api_v3_patch http, USER_REPO, "releases/assets/#{current_asset_id}", {'name' => "#{pkg_name}_old.7z"}
+      break unless response_ok resp_obj, 'PATCH - rename current asset to old', actions_group: true
+
+      resp_obj = gh_api_v3_patch http, USER_REPO, "releases/assets/#{updated_asset_id}", {'name' => "#{pkg_name}.7z"}
+      break unless response_ok resp_obj, 'PATCH - rename updated asset to current', actions_group: true
 
       ttl_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - time_start).round 2
       STDOUT.syswrite "Rename time: #{ttl_time} secs\n"
 
-      gh_api_v3_delete http, USER_REPO, "releases/assets/#{current_asset_id}"
+      resp_obj = gh_api_v3_delete http, USER_REPO, "releases/assets/#{current_asset_id}"
+      break unless response_ok resp_obj, 'DELETE - remove old asset', actions_group: true
 
       # update package info in release notes
       h = {'body' => update_release_notes(body, pkg_name, time)}
-      gh_api_v3_patch http, USER_REPO, "releases/#{release_id}", h
+      resp_obj = gh_api_v3_patch http, USER_REPO, "releases/#{release_id}", h
+      break unless response_ok resp_obj, 'PATCH - update release notes with date/build number', actions_group: true
     end
 
     Net::HTTP.start('github.com', 443, :use_ssl => true) do |http|
