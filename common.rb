@@ -141,7 +141,6 @@ module Common
 
       break unless response_ok resp_obj, 'GET - release info response', actions_group: true
 
-      body         = resp_obj['body']
       release_id   = resp_obj['id']
       assets       = resp_obj['assets']
 
@@ -208,6 +207,10 @@ module Common
 
       resp_obj = gh_api_v3_delete http, USER_REPO, "releases/assets/#{current_asset_id}"
       break unless response_ok resp_obj, 'DELETE - remove old asset', actions_group: true
+
+      resp_obj = gh_api_v3_get http, USER_REPO, "releases/#{release_id}"
+      break unless response_ok resp_obj, 'GET - release notes response', actions_group: true
+      body = resp_obj['body']
 
       # update package info in release notes
       h = {'body' => update_release_notes(body, pkg_name, time)}
