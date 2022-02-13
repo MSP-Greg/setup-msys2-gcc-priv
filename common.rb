@@ -220,7 +220,7 @@ module Common
     Net::HTTP.start('github.com', 443, :use_ssl => true) do |http|
       req = Net::HTTP::Head.new "/#{USER_REPO}/releases/download/#{TAG}/#{pkg_name}.7z"
       resp = http.request req
-      if resp.code == 302
+      if resp.code == '302'
         STDOUT.syswrite "##[endgroup]\n\n#{GRN}HTTP HEAD request #{pkg_name}.7z test - #{resp.code} #{resp.message}#{RST}\n"
       else
         STDOUT.syswrite "##[endgroup]\n\n#{RED}HTTP HEAD request #{pkg_name}.7z test - #{resp.code} #{resp.message}#{RST}\n"
