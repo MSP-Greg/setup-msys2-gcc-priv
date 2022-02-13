@@ -152,6 +152,8 @@ module Common
       current_asset_id = asset_obj['id'] if asset_obj
     end
 
+    exit 1 if resp_obj.is_a? Net::HTTPResponse
+
     unless current_asset_id
       STDOUT.syswrite "#{END_GROUP}#{RED}current asset #{pkg_name}.7z not found#{RST}\n"
       exit 1
@@ -182,6 +184,8 @@ module Common
       STDOUT.syswrite "Upload time: #{ttl_time} secs\n"
     end
 
+    exit 1 if resp_obj.is_a? Net::HTTPResponse
+
     unless updated_asset_id
       STDOUT.syswrite "#{END_GROUP}#{RED}updated_asset_id not found#{RST}\n"
       exit 1
@@ -211,13 +215,13 @@ module Common
       break unless response_ok resp_obj, 'PATCH - update release notes with date/build number', actions_group: true
     end
 
+    exit 1 if resp_obj.is_a? Net::HTTPResponse
+
     Net::HTTP.start('github.com', 443, :use_ssl => true) do |http|
       req = Net::HTTP::Head.new "/#{USER_REPO}/releases/download/#{TAG}/#{pkg_name}.7z"
       resp = http.request req
-      STDOUT.syswrite "\nDownload #{pkg_name}.7z test status #{resp.code} #{resp.message}\n"
+      STDOUT.syswrite "##[endgroup]\n\nHTTP HEAD request #{pkg_name}.7z test - #{resp.code} #{resp.message}\n"
     end
-  ensure
-    STDOUT.syswrite "##[endgroup]\n"
   end
 
   def update_release_notes(old_body, name, time)
