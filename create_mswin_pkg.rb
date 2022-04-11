@@ -30,7 +30,7 @@ module CreateMswin
           STDOUT.syswrite "\n#{GRN}No packages need updating#{RST}\n\n"
           exit 0
         else
-          STDOUT.syswrite "\n#{update_info}\n\n"
+          STDOUT.syswrite "\n#{RED}Updates needed#{RST}\n#{update_info}\n\n"
         end
 
         exec_check "Upgrading #{PACKAGES}",
@@ -49,25 +49,14 @@ module CreateMswin
       ssl_path = "#{EXPORT_DIR}/#{PKG_NAME}/#{OPENSSL_PKG}"
       FileUtils.mkdir_p "#{ssl_path}/certs"
       IO.copy_stream "#{VCPKG}/#{OPENSSL_PKG}/openssl.cnf", "#{ssl_path}/openssl.cnf"
-    end
 
-    # vcpkg/installed/status contains a list of installed packages
-    def generate_status_file
+      # vcpkg/installed/status contains a list of installed packages
       status_path = 'installed/vcpkg/status'
-
-      packages = File.binread("#{VCPKG}/#{status_path}").split "\n\n"
-
-      needed = packages.select do |pkg|
-        PACKAGES.include? pkg[/\APackage: (\S+)/, 1]
-      end
-
-      needed.sort_by! { |pkg| pkg[/\APackage: (\S+)/, 1] } << ''
-      File.binwrite "#{EXPORT_DIR}/#{PKG_NAME}/#{status_path}",  needed.join("\n\n")
+      IO.copy_stream "#{VCPKG}/#{status_path}", "#{EXPORT_DIR}/#{PKG_NAME}/#{status_path}"
     end
 
     def run
       generate_package_files
-      generate_status_file
 
       # create 7z archive file
       tar_path = "#{__dir__}\\#{PKG_NAME}.7z".gsub '/', '\\'
