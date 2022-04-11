@@ -31,7 +31,7 @@ jobs:
           curl -L $uri -o $env:RUNNER_TEMP/mswin_temp.7z
           cd $env:VCPKG_INSTALLATION_ROOT
           &"C:\Program Files\7-Zip\7z" x $env:RUNNER_TEMP/mswin_temp.7z -aoa
-          echo ''
+          echo "`n———————————— ./vcpkg list ————————————"
           ./vcpkg list
         timeout-minutes: 15
 

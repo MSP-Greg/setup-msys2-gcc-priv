@@ -16,7 +16,7 @@ module CreateMswin
 
     PKG_NAME = 'mswin'
 
-    EXPORT_DIR = "#{TEMP}"
+    EXPORT_DIR = "#{TEMP}".gsub "\\", '/'
 
     VCPKG = ENV.fetch 'VCPKG_INSTALLATION_ROOT', 'C:/vcpkg'
 
@@ -24,13 +24,14 @@ module CreateMswin
 
     def generate_package_files
       ENV['VCPKG_ROOT'] = VCPKG
+
       Dir.chdir VCPKG do |d|
         update_info = %x(./vcpkg update)
         if update_info.include? 'No packages need updating'
           STDOUT.syswrite "\n#{GRN}No packages need updating#{RST}\n\n"
           exit 0
         else
-          STDOUT.syswrite "\n#{RED}Updates needed#{RST}\n#{update_info}"
+          STDOUT.syswrite "\n#{YEL}#{LINE} Updates needed#{RST}\n#{update_info}"
         end
 
         exec_check "Upgrading #{PACKAGES}",
@@ -51,11 +52,17 @@ module CreateMswin
       # make certs dir and copy openssl.cnf file
       ssl_path = "#{EXPORT_DIR}/#{PKG_NAME}/#{OPENSSL_PKG}"
       FileUtils.mkdir_p "#{ssl_path}/certs"
-      IO.copy_stream "#{VCPKG}/#{OPENSSL_PKG}/openssl.cnf", "#{ssl_path}/openssl.cnf"
+
+      vcpkg_u = VCPKG.gsub "\\", '/'
+
+      cnf_path = "#{vcpkg_u}/installed/x64-windows/tools/openssl/openssl.cnf"
+      if File.readable? cnf_path
+        IO.copy_stream cnf_path, "#{ssl_path}/openssl.cnf"
+      end
 
       # vcpkg/installed/status contains a list of installed packages
       status_path = 'installed/vcpkg/status'
-      IO.copy_stream "#{VCPKG}/#{status_path}", "#{EXPORT_DIR}/#{PKG_NAME}/#{status_path}"
+      IO.copy_stream "#{vcpkg_u}/#{status_path}", "#{EXPORT_DIR}/#{PKG_NAME}/#{status_path}"
     end
 
     def run
