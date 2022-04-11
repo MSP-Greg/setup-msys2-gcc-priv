@@ -1,4 +1,4 @@
-name: MSWIN Build Tools
+name: MSWin Build Tools
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ on:
 jobs:
   mswin:
     name: >-
-      mswin tools
+      mswin vcpkg tools
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -27,7 +27,7 @@ jobs:
           cd $env:VCPKG_INSTALLATION_ROOT
           git pull -q
           ./bootstrap-vcpkg.bat
-          $uri = "https://github.com/MSP-Greg/setup-msys2-gcc-priv/releases/download/msys2-gcc-pkgs/mswin.7z"
+          $uri = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/msys2-gcc-pkgs/mswin.7z"
           curl -L $uri -o $env:RUNNER_TEMP/mswin_temp.7z
           cd $env:VCPKG_INSTALLATION_ROOT
           &"C:\Program Files\7-Zip\7z" x $env:RUNNER_TEMP/mswin_temp.7z -aoa
