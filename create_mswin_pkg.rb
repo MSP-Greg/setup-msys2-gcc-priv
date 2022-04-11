@@ -30,11 +30,11 @@ module CreateMswin
           STDOUT.syswrite "\n#{GRN}No packages need updating#{RST}\n\n"
           exit 0
         else
-          STDOUT.syswrite "\n#{RED}Updates needed#{RST}\n#{update_info}\n\n"
+          STDOUT.syswrite "\n#{RED}Updates needed#{RST}\n#{update_info}"
         end
 
         exec_check "Upgrading #{PACKAGES}",
-          "./vcpkg upgrade #{PACKAGES} --triplet=x64-windows"
+          "./vcpkg upgrade #{PACKAGES} --triplet=x64-windows --no-dry-run"
 
         exec_check "Removing outdated packages",
           "./vcpkg remove --outdated"
