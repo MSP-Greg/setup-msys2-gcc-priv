@@ -25,9 +25,12 @@ module CreateMswin
     def generate_package_files
       ENV['VCPKG_ROOT'] = VCPKG
       Dir.chdir VCPKG do |d|
-        if %x(./vcpkg update).include? 'No packages need updating'
+        update_info = %x(./vcpkg update)
+        if update_info.include? 'No packages need updating'
           STDOUT.syswrite "\n#{GRN}No packages need updating#{RST}\n\n"
           exit 0
+        else
+          STDOUT.syswrite "\n#{update_info}\n\n"
         end
 
         exec_check "Upgrading #{PACKAGES}",
