@@ -34,7 +34,10 @@ module CreateMswin
         end
 
         exec_check "Upgrading #{PACKAGES}",
-          "./vcpkg install #{PACKAGES} --triplet=x64-windows"
+          "./vcpkg upgrade #{PACKAGES} --triplet=x64-windows"
+
+        exec_check "Removing outdated packages",
+          "./vcpkg remove --outdated"
 
         exec_check "Exporting package files from vcpkg",
           "./vcpkg export --triplet=x64-windows #{PACKAGES} --raw --output=#{PKG_NAME} --output-dir=#{EXPORT_DIR}"
