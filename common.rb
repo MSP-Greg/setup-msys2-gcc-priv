@@ -18,7 +18,7 @@ module Common
 
   SEVEN = "C:\\Program Files\\7-Zip\\7z"
 
-  DASH  = "\u2500".dup.force_encoding 'utf-8'
+  DASH  = ENV['GITHUB_ACTIONS'] ? "\u2500".dup.force_encoding('utf-8') : 151.chr
   LINE  = DASH * 40
   GRN   = "\e[92m"
   RED   = "\e[91m"
