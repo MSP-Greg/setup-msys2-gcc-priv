@@ -75,6 +75,11 @@ module CreateMswin
         exec_check "Exporting package files from vcpkg",
           "./vcpkg export --triplet=x64-windows #{PACKAGES} --raw --output=#{PKG_NAME} --output-dir=#{EXPORT_DIR}"
       end
+      
+      # remove tracked files
+      Dir.chdir "#{EXPORT_DIR}/#{PKG_NAME}" do
+        FileUtils.remove_dir 'scripts', true
+      end
 
       vcpkg_u = VCPKG.gsub "\\", '/'
 
